@@ -51,9 +51,9 @@ const GLOW_EYE = 6;
 
 const FIGHT_APPROACH = 0.035;
 const FIGHT_REACH_MIN = 168;
-const FIGHT_REACH_MAX = 320;
+const FIGHT_REACH_MAX = 420;
 const FIGHT_IMPACT_MIN = 18;
-const FIGHT_IMPACT_MAX = 34;
+const FIGHT_IMPACT_MAX = 46;
 const SPARK_DECAY = 0.86;
 const FIGHT_SOUND_COOLDOWN_MS = 90;
 
@@ -622,11 +622,11 @@ function ensureContainer() {
 }
 
 function getFightReach() {
-  return clamp(width * 0.14, FIGHT_REACH_MIN, FIGHT_REACH_MAX);
+  return clamp(Math.max(width * 0.16, getArenaHalfGap() * 1.45), FIGHT_REACH_MIN, FIGHT_REACH_MAX);
 }
 
 function getFightImpact() {
-  return clamp(width * 0.015, FIGHT_IMPACT_MIN, FIGHT_IMPACT_MAX);
+  return clamp(getFightReach() * 0.15, FIGHT_IMPACT_MIN, FIGHT_IMPACT_MAX);
 }
 
 function getArenaHalfGap() {
@@ -796,16 +796,16 @@ function updatePuppet(puppet, targets, platform, opponent) {
       distanceBetween(pts.lHand, opponentSpine),
       distanceBetween(pts.rHand, opponentSpine)
     );
-    const reachBlend = 1 - clamp(handDist / (fightReach * 1.35), 0, 1);
+    const reachBlend = 1 - clamp(handDist / (fightReach * 1.15), 0, 1);
     puppet.strikePose += (reachBlend - puppet.strikePose) * 0.18;
-    pts.head.x += dir * (4 + puppet.strikePose * 8);
-    pts.neck.x += dir * (3 + puppet.strikePose * 7);
-    pts.spine.x += dir * (2 + puppet.strikePose * 5);
-    leadHand.x += dir * (18 + puppet.strikePose * 30);
-    leadHand.y -= 4 + puppet.strikePose * 10;
-    rearHand.x += dir * (4 + puppet.strikePose * 10);
-    pts.lShoulder.y -= puppet.strikePose * 1.4;
-    pts.rShoulder.y -= puppet.strikePose * 1.4;
+    pts.head.x += dir * (8 + puppet.strikePose * 14);
+    pts.neck.x += dir * (6 + puppet.strikePose * 11);
+    pts.spine.x += dir * (4 + puppet.strikePose * 8);
+    leadHand.x += dir * (34 + puppet.strikePose * 56);
+    leadHand.y -= 6 + puppet.strikePose * 14;
+    rearHand.x += dir * (8 + puppet.strikePose * 16);
+    pts.lShoulder.y -= puppet.strikePose * 1.8;
+    pts.rShoulder.y -= puppet.strikePose * 1.8;
   } else {
     puppet.strikePose *= 0.82;
   }
