@@ -1,0 +1,9 @@
+{
+  "name": "cyber-marionette-static",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "start": "npx --yes serve -p 3000 ."
+  }
+}
+

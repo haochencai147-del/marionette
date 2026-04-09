@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Marionette</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div id="p5-container" class="p5-wrap"></div>
+
+      <div class="hud">
+        <div class="hud-inner">
+          <video
+            id="vision-video"
+            class="hud-video"
+            playsinline
+            muted
+            width="640"
+            height="480"
+          ></video>
+          <canvas id="debug-canvas" class="hud-debug" width="640" height="480"></canvas>
+        </div>
+      </div>
+
+      <div id="loading-overlay" class="loading">
+        <div class="loading-panel">
+          <div class="loading-kicker">ROUND INIT</div>
+          <h1>PIXEL PUPPET ARENA</h1>
+          <p class="loading-subtitle">Calibrating camera and summoning fighters...</p>
+          <div class="loading-spinner-wrap">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <div class="loading-spinner-label">SYNC</div>
+          </div>
+          <div class="loading-bars" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <h2>ALLOW CAMERA TO START</h2>
+          <p class="loading-tip">Stand back a little and raise both hands when the arena opens.</p>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.10/lib/p5.min.js"></script>
+    <script src="./sketch.js?v=20260409-teacherflow"></script>
+  </body>
+</html>
