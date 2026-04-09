@@ -22,6 +22,10 @@ let loadingOverlayEl = null;
 let hudVideoEl = null;
 let debugCanvasEl = null;
 let debugCtx = null;
+let fightAudioContext = null;
+let fightMasterGain = null;
+let fightNoiseBuffer = null;
+let lastFightSoundAt = 0;
 
 const VISION_FRAME_STRIDE = 2;
 let visionFrameTick = 0;
@@ -49,6 +53,7 @@ const FIGHT_APPROACH = 0.035;
 const FIGHT_REACH = 168;
 const FIGHT_IMPACT = 18;
 const SPARK_DECAY = 0.86;
+const FIGHT_SOUND_COOLDOWN_MS = 90;
 
 const PLATFORM_W_RATIO = 0.2;
 const PLATFORM_H = 40;
@@ -322,6 +327,109 @@ function fadeFrameWithRect() {
   ctx.fillStyle = `rgba(${TRAIL_R}, ${TRAIL_G}, ${TRAIL_B}, ${TRAIL_FADE_ALPHA})`;
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
+}
+
+function createFightNoiseBuffer(audioContext) {
+  const duration = 0.18;
+  const frameCount = Math.floor(audioContext.sampleRate * duration);
+  const buffer = audioContext.createBuffer(1, frameCount, audioContext.sampleRate);
+  const channel = buffer.getChannelData(0);
+
+  for (let i = 0; i < frameCount; i++) {
+    const decay = 1 - i / frameCount;
+    channel[i] = (Math.random() * 2 - 1) * decay;
+  }
+
+  return buffer;
+}
+
+function ensureFightAudio() {
+  if (fightAudioContext) return fightAudioContext;
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) return null;
+
+  fightAudioContext = new AudioContextCtor();
+  fightMasterGain = fightAudioContext.createGain();
+  fightMasterGain.gain.value = 0.3;
+  fightMasterGain.connect(fightAudioContext.destination);
+  fightNoiseBuffer = createFightNoiseBuffer(fightAudioContext);
+  return fightAudioContext;
+}
+
+function unlockFightAudio() {
+  const audioContext = ensureFightAudio();
+  if (!audioContext || audioContext.state !== "suspended") return;
+  audioContext.resume().catch(() => {});
+}
+
+function createFightOutput(audioContext, panValue) {
+  if (typeof audioContext.createStereoPanner === "function") {
+    const panner = audioContext.createStereoPanner();
+    panner.pan.value = clamp(panValue, -1, 1);
+    panner.connect(fightMasterGain);
+    return panner;
+  }
+
+  const gainNode = audioContext.createGain();
+  gainNode.connect(fightMasterGain);
+  return gainNode;
+}
+
+function playFightSound(intensity = 0.5, pan = 0) {
+  const audioContext = ensureFightAudio();
+  if (!audioContext || audioContext.state !== "running") return;
+
+  const nowMs = performance.now();
+  if (nowMs - lastFightSoundAt < FIGHT_SOUND_COOLDOWN_MS) return;
+  lastFightSoundAt = nowMs;
+
+  const hitPower = clamp(intensity, 0.2, 1);
+  const now = audioContext.currentTime;
+  const output = createFightOutput(audioContext, pan);
+
+  const thump = audioContext.createOscillator();
+  const thumpGain = audioContext.createGain();
+  thump.type = "triangle";
+  thump.frequency.setValueAtTime(180 + hitPower * 60, now);
+  thump.frequency.exponentialRampToValueAtTime(55, now + 0.12);
+  thumpGain.gain.setValueAtTime(0.0001, now);
+  thumpGain.gain.exponentialRampToValueAtTime(0.26 * hitPower, now + 0.008);
+  thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+  thump.connect(thumpGain);
+  thumpGain.connect(output);
+  thump.start(now);
+  thump.stop(now + 0.14);
+
+  const snap = audioContext.createOscillator();
+  const snapGain = audioContext.createGain();
+  snap.type = "square";
+  snap.frequency.setValueAtTime(620 + hitPower * 180, now);
+  snap.frequency.exponentialRampToValueAtTime(180, now + 0.045);
+  snapGain.gain.setValueAtTime(0.0001, now);
+  snapGain.gain.exponentialRampToValueAtTime(0.1 + hitPower * 0.06, now + 0.002);
+  snapGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+  snap.connect(snapGain);
+  snapGain.connect(output);
+  snap.start(now);
+  snap.stop(now + 0.06);
+
+  if (fightNoiseBuffer) {
+    const noise = audioContext.createBufferSource();
+    const noiseFilter = audioContext.createBiquadFilter();
+    const noiseGain = audioContext.createGain();
+    noise.buffer = fightNoiseBuffer;
+    noiseFilter.type = "bandpass";
+    noiseFilter.frequency.setValueAtTime(900 + hitPower * 500, now);
+    noiseFilter.Q.value = 0.7;
+    noiseGain.gain.setValueAtTime(0.0001, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.08 + hitPower * 0.06, now + 0.003);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(output);
+    noise.start(now);
+  }
 }
 
 function solveLink(p1, p2, distance, strength = 1.0) {
@@ -758,6 +866,7 @@ function resolvePuppetFight(leftPuppet, rightPuppet) {
     rightPuppet.particles.head.x += FIGHT_IMPACT * push;
     rightPuppet.particles.spine.x += FIGHT_IMPACT * 0.55 * push;
     rightPuppet.particles.head.y -= 6 * push;
+    playFightSound(push, -0.35);
   }
 
   if (rightPunch < FIGHT_REACH) {
@@ -767,6 +876,7 @@ function resolvePuppetFight(leftPuppet, rightPuppet) {
     leftPuppet.particles.head.x -= FIGHT_IMPACT * push;
     leftPuppet.particles.spine.x -= FIGHT_IMPACT * 0.55 * push;
     leftPuppet.particles.head.y -= 6 * push;
+    playFightSound(push, 0.35);
   }
 }
 
@@ -949,6 +1059,8 @@ function setup() {
   background(TRAIL_R, TRAIL_G, TRAIL_B);
   frameRate(60);
   textFont("monospace");
+
+  window.addEventListener("pointerdown", unlockFightAudio, { passive: true });
 
   initPuppets();
   initializeVisionTracking();
