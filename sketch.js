@@ -630,14 +630,18 @@ function getFightImpact() {
 }
 
 function getArenaHalfGap() {
-  return clamp(width * 0.12, 44, 180);
+  return clamp(width * 0.19, 120, 320);
+}
+
+function getArenaLift() {
+  return clamp(height * 0.1, 24, 110);
 }
 
 function getPuppetPlatform(puppet) {
-  const platformW = Math.max(180, Math.round(width * PLATFORM_W_RATIO));
+  const platformW = Math.max(220, Math.round(width * 0.23));
   return {
     x: puppet.homeX - platformW / 2,
-    y: height - PLATFORM_MARGIN_BOTTOM - PLATFORM_H,
+    y: height - PLATFORM_MARGIN_BOTTOM - PLATFORM_H - getArenaLift(),
     w: platformW,
     h: PLATFORM_H,
   };
@@ -719,8 +723,8 @@ function drawCombatHints(leftPuppet, rightPuppet, leftActive, rightActive) {
 function getHandTargets(landmarks, side) {
   if (!landmarks) return null;
 
-  const laneWidth = clamp(width * 0.24, 160, 420);
-  const laneOffset = clamp(width * 0.16, 70, 220);
+  const laneWidth = clamp(width * 0.2, 150, 340);
+  const laneOffset = clamp(width * 0.22, 120, 340);
   const laneCenterX = width / 2 + (side === "left" ? -laneOffset : laneOffset);
   const laneX = laneCenterX - laneWidth / 2;
   const laneY = height * 0.08;
