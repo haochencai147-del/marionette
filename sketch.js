@@ -50,8 +50,10 @@ const GLOW_HEAD = 12;
 const GLOW_EYE = 6;
 
 const FIGHT_APPROACH = 0.035;
-const FIGHT_REACH = 168;
-const FIGHT_IMPACT = 18;
+const FIGHT_REACH_MIN = 168;
+const FIGHT_REACH_MAX = 320;
+const FIGHT_IMPACT_MIN = 18;
+const FIGHT_IMPACT_MAX = 34;
 const SPARK_DECAY = 0.86;
 const FIGHT_SOUND_COOLDOWN_MS = 90;
 
@@ -550,9 +552,10 @@ function easeParticleToPose(particle, target, easing) {
 }
 
 function initPuppets() {
+  const arenaHalfGap = getArenaHalfGap();
   puppets = {
-    left: createPuppet(width * 0.38, "warrior"),
-    right: createPuppet(width * 0.62, "monster"),
+    left: createPuppet(width / 2 - arenaHalfGap, "warrior"),
+    right: createPuppet(width / 2 + arenaHalfGap, "monster"),
   };
 }
 
@@ -616,6 +619,18 @@ function distanceBetween(a, b) {
 function ensureContainer() {
   if (containerEl) return;
   containerEl = document.getElementById("p5-container");
+}
+
+function getFightReach() {
+  return clamp(width * 0.14, FIGHT_REACH_MIN, FIGHT_REACH_MAX);
+}
+
+function getFightImpact() {
+  return clamp(width * 0.015, FIGHT_IMPACT_MIN, FIGHT_IMPACT_MAX);
+}
+
+function getArenaHalfGap() {
+  return clamp(width * 0.12, 44, 180);
 }
 
 function getPuppetPlatform(puppet) {
@@ -704,8 +719,10 @@ function drawCombatHints(leftPuppet, rightPuppet, leftActive, rightActive) {
 function getHandTargets(landmarks, side) {
   if (!landmarks) return null;
 
-  const laneWidth = width * 0.28;
-  const laneX = side === "left" ? width * 0.18 : width * 0.54;
+  const laneWidth = clamp(width * 0.24, 160, 420);
+  const laneOffset = clamp(width * 0.16, 70, 220);
+  const laneCenterX = width / 2 + (side === "left" ? -laneOffset : laneOffset);
+  const laneX = laneCenterX - laneWidth / 2;
   const laneY = height * 0.08;
   const laneHeight = height * 0.72;
 
@@ -743,6 +760,7 @@ function applyString(particle, target, stiffness, color) {
 
 function updatePuppet(puppet, targets, platform, opponent) {
   const pts = puppet.particles;
+  const fightReach = getFightReach();
   puppet.scatterEnergy *= SCATTER_DECAY;
   puppet.lastHitFlash *= SPARK_DECAY;
   const hasControlInput = Boolean(targets);
@@ -774,7 +792,7 @@ function updatePuppet(puppet, targets, platform, opponent) {
       distanceBetween(pts.lHand, opponentSpine),
       distanceBetween(pts.rHand, opponentSpine)
     );
-    const reachBlend = 1 - clamp(handDist / (FIGHT_REACH * 1.35), 0, 1);
+    const reachBlend = 1 - clamp(handDist / (fightReach * 1.35), 0, 1);
     puppet.strikePose += (reachBlend - puppet.strikePose) * 0.18;
     pts.head.x += dir * (4 + puppet.strikePose * 8);
     pts.neck.x += dir * (3 + puppet.strikePose * 7);
@@ -856,25 +874,27 @@ function updatePuppet(puppet, targets, platform, opponent) {
 
 function resolvePuppetFight(leftPuppet, rightPuppet) {
   // Compare each lead hand to the opponent head to trigger hit reactions and spark FX.
+  const fightReach = getFightReach();
+  const fightImpact = getFightImpact();
   const leftPunch = distanceBetween(leftPuppet.particles.rHand, rightPuppet.particles.head);
   const rightPunch = distanceBetween(rightPuppet.particles.lHand, leftPuppet.particles.head);
 
-  if (leftPunch < FIGHT_REACH) {
-    const push = (FIGHT_REACH - leftPunch) / FIGHT_REACH;
+  if (leftPunch < fightReach) {
+    const push = (fightReach - leftPunch) / fightReach;
     rightPuppet.scatterEnergy = Math.min(1, rightPuppet.scatterEnergy + push * 0.22);
     rightPuppet.lastHitFlash = Math.max(rightPuppet.lastHitFlash, 0.5 + push * 0.5);
-    rightPuppet.particles.head.x += FIGHT_IMPACT * push;
-    rightPuppet.particles.spine.x += FIGHT_IMPACT * 0.55 * push;
+    rightPuppet.particles.head.x += fightImpact * push;
+    rightPuppet.particles.spine.x += fightImpact * 0.55 * push;
     rightPuppet.particles.head.y -= 6 * push;
     playFightSound(push, -0.35);
   }
 
-  if (rightPunch < FIGHT_REACH) {
-    const push = (FIGHT_REACH - rightPunch) / FIGHT_REACH;
+  if (rightPunch < fightReach) {
+    const push = (fightReach - rightPunch) / fightReach;
     leftPuppet.scatterEnergy = Math.min(1, leftPuppet.scatterEnergy + push * 0.22);
     leftPuppet.lastHitFlash = Math.max(leftPuppet.lastHitFlash, 0.5 + push * 0.5);
-    leftPuppet.particles.head.x -= FIGHT_IMPACT * push;
-    leftPuppet.particles.spine.x -= FIGHT_IMPACT * 0.55 * push;
+    leftPuppet.particles.head.x -= fightImpact * push;
+    leftPuppet.particles.spine.x -= fightImpact * 0.55 * push;
     leftPuppet.particles.head.y -= 6 * push;
     playFightSound(push, 0.35);
   }
