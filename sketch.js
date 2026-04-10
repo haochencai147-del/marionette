@@ -217,6 +217,7 @@ function assignTrackedHands(landmarksList) {
     .sort((a, b) => a.screenX - b.screenX);
 
   if (rankedHands.length === 1) {
+    // When only one hand is visible, keep it attached to whichever fighter owned the nearest last-known lane.
     const onlyHand = rankedHands[0];
     const leftDistance = trackedHandsMeta.leftX == null ? Number.POSITIVE_INFINITY : Math.abs(onlyHand.screenX - trackedHandsMeta.leftX);
     const rightDistance = trackedHandsMeta.rightX == null ? Number.POSITIVE_INFINITY : Math.abs(onlyHand.screenX - trackedHandsMeta.rightX);
@@ -269,6 +270,7 @@ async function initializeVisionTracking() {
         numHands: 2,
       });
 
+      // The hidden HUD video is both the MediaPipe input source and the fallback debug preview.
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 480 },
@@ -312,6 +314,7 @@ function predictWebcam() {
       assignTrackedHands(handLandmarks.landmarks);
       handLandmarks.landmarks.forEach((landmarks) => drawDebugHand(landmarks));
     } else {
+      // Clear ownership immediately so fighters drift back to idle when tracking drops out.
       trackedHands = { left: null, right: null };
       trackedHandsMeta = { leftX: null, rightX: null };
     }
@@ -337,6 +340,7 @@ function createFightNoiseBuffer(audioContext) {
   const buffer = audioContext.createBuffer(1, frameCount, audioContext.sampleRate);
   const channel = buffer.getChannelData(0);
 
+  // Prebuild one short noise burst so every hit can reuse it without allocating a new buffer.
   for (let i = 0; i < frameCount; i++) {
     const decay = 1 - i / frameCount;
     channel[i] = (Math.random() * 2 - 1) * decay;
@@ -351,6 +355,7 @@ function ensureFightAudio() {
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextCtor) return null;
 
+  // Build the audio graph lazily because browsers usually block Web Audio until user interaction.
   fightAudioContext = new AudioContextCtor();
   fightMasterGain = fightAudioContext.createGain();
   fightMasterGain.gain.value = 0.3;
@@ -362,17 +367,20 @@ function ensureFightAudio() {
 function unlockFightAudio() {
   const audioContext = ensureFightAudio();
   if (!audioContext || audioContext.state !== "suspended") return;
+  // Resume on pointer input to satisfy autoplay restrictions without forcing a dedicated start button.
   audioContext.resume().catch(() => {});
 }
 
 function createFightOutput(audioContext, panValue) {
   if (typeof audioContext.createStereoPanner === "function") {
+    // Pan left or right so hits feel like they come from the fighter's side of the stage.
     const panner = audioContext.createStereoPanner();
     panner.pan.value = clamp(panValue, -1, 1);
     panner.connect(fightMasterGain);
     return panner;
   }
 
+  // Older browsers may not support stereo panning, so fall back to a plain gain node.
   const gainNode = audioContext.createGain();
   gainNode.connect(fightMasterGain);
   return gainNode;
@@ -390,6 +398,7 @@ function playFightSound(intensity = 0.5, pan = 0) {
   const now = audioContext.currentTime;
   const output = createFightOutput(audioContext, pan);
 
+  // Layer 1: low thump for body impact.
   const thump = audioContext.createOscillator();
   const thumpGain = audioContext.createGain();
   thump.type = "triangle";
@@ -403,6 +412,7 @@ function playFightSound(intensity = 0.5, pan = 0) {
   thump.start(now);
   thump.stop(now + 0.14);
 
+  // Layer 2: short bright snap so punches read sharply instead of as a soft drum hit.
   const snap = audioContext.createOscillator();
   const snapGain = audioContext.createGain();
   snap.type = "square";
@@ -417,6 +427,7 @@ function playFightSound(intensity = 0.5, pan = 0) {
   snap.stop(now + 0.06);
 
   if (fightNoiseBuffer) {
+    // Layer 3: filtered noise adds a rough "smack" texture on top of the synth tones.
     const noise = audioContext.createBufferSource();
     const noiseFilter = audioContext.createBiquadFilter();
     const noiseGain = audioContext.createGain();
@@ -561,6 +572,7 @@ function initPuppets() {
 
 function getPuppetStyle(puppet) {
   if (puppet.variant === "monster") {
+    // Monster uses acidic greens and darker fills so it reads as the aggressive, corrupted side of the arena.
     return {
       limbColor: "#9cff57",
       limbGlow: "#2b9348",
@@ -577,6 +589,7 @@ function getPuppetStyle(puppet) {
     };
   }
 
+  // Warrior keeps brighter ivory and pink highlights to contrast against the monster without changing the shared silhouette.
   return {
     limbColor: "#f8f7ff",
     limbGlow: "#6d597a",
@@ -652,6 +665,7 @@ function drawPlatform(platform) {
   ctx.save();
   ctx.shadowBlur = Math.round(GLOW_TORSO * 0.9);
   ctx.shadowColor = STAGE_GLOW;
+  // The platform is drawn as a glowing pixel slab so both fighters feel staged instead of floating in empty space.
   drawPixelRect(platform.x, platform.y, platform.w, platform.h, STAGE_FILL, STAGE_STROKE);
   drawPixelRect(platform.x + 12, platform.y + 8, platform.w - 24, PIXEL_SIZE, "rgba(255, 215, 130, 0.55)");
   drawPixelRect(platform.x + 12, platform.y + platform.h - 14, platform.w - 24, PIXEL_SIZE, "rgba(255, 215, 130, 0.35)");
@@ -664,6 +678,7 @@ function drawCombatHints(leftPuppet, rightPuppet, leftActive, rightActive) {
   const panelH = 40;
 
   const drawStatusPanel = (x, label, active, accentColor) => {
+    // HUD panels borrow the same pixel framing language as the stage so UI feels part of the scene.
     drawPixelRect(x, hudY, panelW, panelH, "rgba(25, 16, 28, 0.82)", accentColor);
     fill(active ? "#fff7df" : "#ffcad4");
     noStroke();
@@ -723,6 +738,7 @@ function drawCombatHints(leftPuppet, rightPuppet, leftActive, rightActive) {
 function getHandTargets(landmarks, side) {
   if (!landmarks) return null;
 
+  // Each fighter only maps into its own lane, which prevents hands from crossing and swapping sides visually.
   const laneWidth = clamp(width * 0.2, 150, 340);
   const laneOffset = clamp(width * 0.22, 120, 340);
   const laneCenterX = width / 2 + (side === "left" ? -laneOffset : laneOffset);
@@ -758,6 +774,7 @@ function applyString(particle, target, stiffness, color) {
   fill(color);
   noStroke();
   circle(target.x, target.y, 6);
+  // Nudge instead of snapping so the marionette keeps some inertia from the verlet simulation.
   particle.x += (target.x - particle.x) * stiffness;
   particle.y += (target.y - particle.y) * stiffness;
 }
@@ -866,6 +883,7 @@ function updatePuppet(puppet, targets, platform, opponent) {
   }
 
   if (puppet.scatterEnergy > 0.14) {
+    // Add a short noisy wobble after impacts so hits feel less like perfect IK and more like a shaken puppet.
     const kick = puppet.scatterEnergy * 4.5;
     Object.values(pts).forEach((pt) => {
       const massFactor = 0.55 + pt.mass * 0.35;
@@ -887,6 +905,7 @@ function resolvePuppetFight(leftPuppet, rightPuppet) {
     const push = (fightReach - leftPunch) / fightReach;
     rightPuppet.scatterEnergy = Math.min(1, rightPuppet.scatterEnergy + push * 0.22);
     rightPuppet.lastHitFlash = Math.max(rightPuppet.lastHitFlash, 0.5 + push * 0.5);
+    // Push both head and spine so the whole body recoils instead of only popping the face backward.
     rightPuppet.particles.head.x += fightImpact * push;
     rightPuppet.particles.spine.x += fightImpact * 0.55 * push;
     rightPuppet.particles.head.y -= 6 * push;
@@ -912,6 +931,7 @@ function drawFightFX(leftPuppet, rightPuppet) {
 
   pairs.forEach(([hand, head, flash]) => {
     if (flash < 0.08) return;
+    // Bias the spark position toward the attacker so the burst reads like a punch impact, not a head aura.
     const impact = lerpPoint(hand, head, 0.42);
     const ctx = drawingContext;
     ctx.save();
@@ -953,7 +973,9 @@ function drawPuppet(puppet) {
     ctx.save();
     ctx.shadowBlur = GLOW_TORSO;
     ctx.shadowColor = style.torsoStroke;
+    // The costume is layered first, then the glowing limbs are painted on top to keep the sprite silhouette readable.
     if (puppet.variant === "warrior") {
+      // Warrior design leans into a guardian/angel read with a compact torso, halo accents, and blocky wings.
       drawPixelRect(pts.neck.x - 24, pts.neck.y - 12, 48, 18, style.torsoFill, style.torsoStroke);
       drawPixelRect(pts.spine.x - 24, pts.spine.y - 6, 48, 36, style.torsoFill, style.torsoStroke);
       drawPixelRect(pts.lHip.x - 14, pts.lHip.y + 6, 24, 18, style.torsoFill, style.torsoStroke);
@@ -986,6 +1008,7 @@ function drawPuppet(puppet) {
       drawPixelRect(rightWingRootX + 18, wingBaseY + 48, 30, 12, wingGlow, wingStroke);
       drawPixelRect(rightWingRootX + 6, wingBaseY + 30, 18, 18, wingCore, wingStroke);
     } else {
+      // Monster keeps asymmetry and chunkier armor pieces so it feels heavier and less elegant than the warrior.
       drawPixelRect(pts.neck.x - 18, pts.neck.y - 18, 36, 18, style.torsoStroke, style.maskStroke);
       drawPixelRect(pts.spine.x - 30, pts.spine.y - 6, 60, 42, style.torsoFill, style.torsoStroke);
       drawPixelRect(pts.spine.x - 18, pts.spine.y + 30, 36, 18, style.torsoCore, style.torsoStroke);
@@ -998,8 +1021,14 @@ function drawPuppet(puppet) {
     if (puppet.variant === "warrior") {
       drawPixelRect(pts.spine.x - 6, pts.spine.y - 2, 12, 12, "#fffaf0");
     }
+
     ctx.restore();
   }
+
+  // Mid-body filler blocks bridge the gap between limbs so the puppet does not look disconnected during fast motion.
+  drawPixelLine(shoulderLeft.x, shoulderLeft.y, waistLeft.x, waistLeft.y, PIXEL_SIZE * 1.5, style.limbColor, style.limbGlow);
+  drawPixelLine(shoulderRight.x, shoulderRight.y, waistRight.x, waistRight.y, PIXEL_SIZE * 1.5, style.limbColor, style.limbGlow);
+  drawPixelLine(chest.x, chest.y, waist.x, waist.y, PIXEL_SIZE * 1.5, style.limbColor, style.limbGlow);
 
   drawNeonBone(pts.head, pts.neck, 14, style.limbColor, style.limbGlow);
   drawNeonBone(pts.lHip, pts.lKnee, 12, style.limbColor, style.limbGlow);
@@ -1018,6 +1047,7 @@ function drawPuppet(puppet) {
     ctx.save();
     ctx.shadowBlur = GLOW_HEAD;
     ctx.shadowColor = puppet.lastHitFlash > 0.08 ? style.hitColor : style.maskStroke;
+    // Heads are exaggerated, mask-like sprites so expressions still read clearly at low pixel resolution.
     if (puppet.variant === "warrior") {
       drawPixelRect(hx - 24, hy - 24, 48, 48, style.maskFill, style.maskStroke);
     } else {
